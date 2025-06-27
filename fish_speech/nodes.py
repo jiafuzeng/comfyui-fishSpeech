@@ -109,8 +109,8 @@ class FishSpeechTTSNode:
             }
         }
 
-    RETURN_TYPES = ("WAVEFORM", "INT")
-    RETURN_NAMES = ("waveform", "sample_rate")
+    RETURN_TYPES = ("AUDIO", )
+    RETURN_NAMES = ("audio",)
     FUNCTION = "generate_speech"
     CATEGORY = "FishSpeech"
 
@@ -161,9 +161,13 @@ class FishSpeechTTSNode:
         
         print(f"Generated audio with sample rate {sample_rate} and shape {waveform_numpy.shape}")
         
-        waveform_tensor = torch.from_numpy(waveform_numpy).float().unsqueeze(0)
-        
-        return (waveform_tensor, sample_rate)
+        waveform = torch.from_numpy(waveform_numpy).float()
+        if waveform.dim() == 1:
+            waveform = waveform.unsqueeze(0).unsqueeze(0)  # [N] -> [1, 1, N]
+        elif waveform.dim() == 2:
+            waveform = waveform.transpose(0, 1).unsqueeze(0)  # [N, C] -> [C, N] -> [1, C, N]
+        audio = waveform
+        return ({'waveform': audio, 'sample_rate': sample_rate},)
 
 
 class FishSpeechAudioPreviewNode:
@@ -171,8 +175,7 @@ class FishSpeechAudioPreviewNode:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "waveform": ("WAVEFORM",),
-                "sample_rate": ("INT", {"default": 44100, "min": 1, "max": 192000}),
+                "audio": ("AUDIO",),
                 "filename_prefix": ("STRING", {"default": "fish-speech"}),
             }
         }
@@ -182,17 +185,18 @@ class FishSpeechAudioPreviewNode:
     OUTPUT_NODE = True
     CATEGORY = "FishSpeech"
 
-    def save_and_preview(self, waveform, sample_rate, filename_prefix="fish-speech"):
+    def save_and_preview(self,audio,filename_prefix="fish-speech"):
         import time
         import os
 
         # Save audio to a temporary file for playback
         temp_dir = folder_paths.get_temp_directory()
         
-        waveform_tensor = waveform
-        
+        waveform_tensor = audio["waveform"]
+        sample_rate = audio["sample_rate"] 
         # Convert to numpy
-        audio_data = waveform_tensor.squeeze(0).cpu().numpy()
+        #audio_data = waveform_tensor.squeeze(0).cpu().numpy()
+        audio_data = audio['waveform'].squeeze(0).transpose(0,1).cpu().numpy()
         
         filename = f"{filename_prefix}_{int(time.time() * 1000)}.wav"
         
